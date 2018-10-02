@@ -1669,3 +1669,43 @@ fn all_features_all_crates() {
 
     p.cargo("build --all-features --all").run();
 }
+
+#[test]
+fn different_features_for_different_targets() {
+
+    Package::new("bar", "0.1.0")
+        .feature("baz", &[])
+        .feature("quux", &[])
+        .publish();
+
+    let p = project()
+        .file(
+            "Cargo.toml",
+            r#"
+            [project]
+            name = "foo"
+            version = "0.0.1"
+            authors = []
+
+            [target.x86_64-unknown-linux-gnu.dependencies]
+            bar = {version = "0.1.0", features = ["quux"] }
+
+            [target.wasm32-unknown-unknown.dependencies]
+            bar = {version = "0.1.0", default-features = false, features = ["baz"] }
+        "#,
+        )
+        .file("src/lib.rs", "")
+        .build();
+
+    p.cargo("build -vv --target=x86_64-unknown-linux-gnu")
+        .masquerade_as_nightly_cargo()
+        .with_stderr_contains(r#"[..]feature="quux"[..]"#)
+        .with_stderr_does_not_contain(r#"[..]feature="baz"[..]"#)
+        .run();
+
+    p.cargo("build -vv --target=wasm32-unknown-unknown")
+        .masquerade_as_nightly_cargo()
+        .with_stderr_contains(r#"[..]feature="baz"[..]"#)
+        .with_stderr_does_not_contain(r#"[..]feature="quux"[..]"#)
+        .run();
+}
